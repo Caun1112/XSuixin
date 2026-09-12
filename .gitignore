@@ -1,0 +1,6 @@
+.DS_Store
+.theos/
+**/.theos/
+packages/
+**/packages/*.deb
+**/packages/*.sha256

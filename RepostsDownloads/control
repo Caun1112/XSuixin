@@ -1,0 +1,10 @@
+Package: com.caun.bhtwitter.repostsdownloads
+Name: X 随心
+Version: 2.2.2
+Architecture: iphoneos-arm64
+Description: 修复分享图片作者昵称与 @用户名缺失；包含转推管理、视频下载和界面定制。
+Maintainer: caun1112
+Author: caun1112, Bandar Alruwaili
+Section: Tweaks
+Depends: firmware (>= 15.0), mobilesubstrate
+Conflicts: com.bandarhl.bhtwitter, com.caun.bhtwitter.hidereposts
