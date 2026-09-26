@@ -2,7 +2,7 @@
 #import "BHRDMediaResolver.h"
 #import "BHRDShareLoadedMedia.h"
 #import "BHRDRepostAuthor.h"
-#import "BHRDManager.h"
+#import <objc/message.h>
 #import <float.h>
 #import <math.h>
 static NSUInteger HanCount(NSString *text) {
@@ -43,7 +43,7 @@ static void Enrich(BHRDSharePost *post, UIView *card, NSUInteger depth) {
     BOOL originalFlag = post.bodyIsOriginal;
     NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithArray:card.subviews];
     NSMutableArray<UIView *> *quotes = [NSMutableArray array];
-    NSMutableArray<NSDictionary *> *labels = [NSMutableArray array], *avatars = [NSMutableArray array], *rows = [NSMutableArray array];
+    NSMutableArray<NSDictionary *> *labels = [NSMutableArray array], *rows = [NSMutableArray array];
     NSUInteger budget = 350;
     while (pending.count && budget--) {
         UIView *view = pending.firstObject; [pending removeObjectAtIndex:0];
@@ -66,10 +66,6 @@ static void Enrich(BHRDSharePost *post, UIView *card, NSUInteger depth) {
         if (translated.length && ![translated isEqual:post.body]) [labels addObject:@{@"text": translated, @"view": view, @"x": @(rect.origin.x), @"y": @(rect.origin.y), @"body": @YES, @"translated": @YES}];
         NSString *accessible = view.accessibilityLabel;
         if (BodyView(view, card) && accessible.length >= 30 && ![accessible isEqual:text] && HanCount(accessible) >= 6 && HanCount(post.body) == 0) [labels addObject:@{@"text": accessible, @"view": view, @"x": @(rect.origin.x), @"y": @(rect.origin.y), @"body": @YES, @"translated": @YES}];
-        id image = BHRDMediaObject(view, @"image");
-        if ([image isKindOfClass:UIImage.class] && rect.origin.y < 110 && rect.origin.x < 90 && rect.size.width >= 20 && rect.size.width <= 90 && fabs(rect.size.width - rect.size.height) < 10) {
-            [avatars addObject:@{@"image": image, @"area": @(rect.size.width * rect.size.height), @"y": @(rect.origin.y)}];
-        }
         [pending addObjectsFromArray:view.subviews];
     }
     [labels sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
@@ -88,37 +84,7 @@ static void Enrich(BHRDSharePost *post, UIView *card, NSUInteger depth) {
         for (NSDictionary *label in labels) if (HanCount(label[@"text"]) >= 6 && [label[@"text"] length] >= 30) { preferChineseTranslation = YES; break; }
     }
     if (translatedContext && originalBeforeView.length) { post.body = originalBeforeView; post.bodyIsOriginal = originalFlag; }
-    NSRegularExpression *handleRE = [NSRegularExpression regularExpressionWithPattern:@"@([A-Za-z0-9_]{1,15})(?![A-Za-z0-9_])" options:0 error:nil];
-    NSDictionary *handleRow = nil;
     CGFloat headerY = -1;
-    for (NSDictionary *label in labels) {
-        NSString *text = label[@"text"];
-        if ([label[@"y"] doubleValue] > 110 || [text containsString:@"\n"] || [text hasPrefix:@"回复"] || [text hasPrefix:@"Replying"]) continue;
-        NSTextCheckingResult *match = [handleRE firstMatchInString:text options:0 range:NSMakeRange(0, text.length)];
-        if (!match) continue;
-        NSUInteger end = NSMaxRange(match.range);
-        if (end < text.length && [@".…" rangeOfString:[text substringWithRange:NSMakeRange(end, 1)]].location != NSNotFound) continue;
-        NSString *suffix = [[text substringFromIndex:end] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (suffix.length && ![suffix hasPrefix:@"·"] && ![suffix hasPrefix:@"•"]) continue;
-        NSString *handle = [text substringWithRange:[match rangeAtIndex:1]];
-        if (post.handle.length && ![post.handle.lowercaseString isEqual:handle.lowercaseString]) continue;
-        NSString *prefix = [[text substringToIndex:match.range.location] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@" ·\t"]];
-        if (prefix.length > 90) continue;
-        [rows addObject:@{@"role": @"handle", @"text": handle}];
-        if (prefix.length) [rows addObject:@{@"role": @"author", @"text": prefix}];
-        handleRow = label; headerY = [label[@"y"] doubleValue]; break;
-    }
-    if (handleRow && !post.author.length) {
-        NSDictionary *best = nil; double distance = DBL_MAX;
-        for (NSDictionary *label in labels) {
-            NSString *text = label[@"text"]; double y = [label[@"y"] doubleValue], x = [label[@"x"] doubleValue];
-            if (label == handleRow || text.length < 2 || [text containsString:@"@"] || [text containsString:@"\n"] || [text hasPrefix:@"http"] || y > headerY + 8 || y < headerY - 45) continue;
-            if (fabs(y - headerY) < 8 && x >= [handleRow[@"x"] doubleValue]) continue;
-            double score = fabs(headerY - y) + (fabs(y - headerY) < 8 ? 0 : 5);
-            if (score < distance) { distance = score; best = label; }
-        }
-        if (best) [rows addObject:@{@"role": @"author", @"text": best[@"text"]}];
-    }
     for (NSDictionary *label in labels) {
         NSString *text = label[@"text"];
         if ([text hasPrefix:@"翻译自"] || [text hasPrefix:@"译自"] || [text hasPrefix:@"评价此翻译"] || [text containsString:@"Translated from"] || [text isEqual:@"显示原文"] || [text isEqual:@"查看翻译"]) continue;
@@ -128,10 +94,6 @@ static void Enrich(BHRDSharePost *post, UIView *card, NSUInteger depth) {
         if ((headerY < 0 || [label[@"y"] doubleValue] > headerY + 18) && (semantic || paragraph) && (!translatedContext || !originalBeforeView.length || ![originalBeforeView containsString:text])) [rows addObject:@{@"role": translatedContext ? @"translation" : @"body", @"text": text}];
     }
     BHRDApplyShareTextRows(post, rows);
-    if (!post.avatarData && avatars.count) {
-        [avatars sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [b[@"area"] compare:a[@"area"]]; }];
-        post.avatarData = UIImagePNGRepresentation(avatars.firstObject[@"image"]);
-    }
     BHRDCaptureLoadedShareMedia(post, card, quotes);
     for (UIView *quoteView in quotes) {
         BHRDSharePost *quote = BHRDSharePostFromSource(BHRDMediaObject(quoteView, @"viewModel") ?: BHRDMediaObject(quoteView, @"status"));
@@ -151,12 +113,13 @@ void BHRDEnrichSharePostFromView(BHRDSharePost *post, UIView *card) {
         if (![parent isKindOfClass:UITableView.class]) continue;
         UIView *header = ((UITableView *)parent).tableHeaderView;
         if (!header) break;
-        BHRDSharePost *author = [BHRDSharePost new]; author.identifier = post.identifier;
-        Enrich(author, header, 0);
-        if (!post.author.length) post.author = author.author;
-        if (!post.handle.length) post.handle = author.handle;
-        if (!post.avatar) post.avatar = author.avatar;
-        if (!post.avatarData) post.avatarData = author.avatarData;
+        BHRDRepostInfo *identity = [BHRDRepostInfo new];
+        identity.authorName = post.author; identity.authorHandle = post.handle; identity.avatar = post.avatar;
+        UIImage *avatar = BHRDCaptureRepostAuthor(header, nil, nil, identity);
+        if (!post.author.length) post.author = identity.authorName ?: @"";
+        if (!post.handle.length) post.handle = identity.authorHandle ?: @"";
+        if (!post.avatar) post.avatar = identity.avatar;
+        if (!post.avatarData && avatar) post.avatarData = UIImagePNGRepresentation(avatar);
         if ([post.title isEqual:@"X 推文"] && post.handle.length) post.title = [NSString stringWithFormat:@"@%@ 的推文", post.handle];
         break;
     }
@@ -173,7 +136,7 @@ void BHRDEnrichShareReplyContextFromView(BHRDSharePost *post, UIView *card) {
         id delegate = table.delegate;
         id model = nil;
         if ([delegate respondsToSelector:@selector(itemAtIndexPath:)])
-            model = [(id)delegate itemAtIndexPath:path];
+            model = ((id (*)(id, SEL, id))objc_msgSend)(delegate, @selector(itemAtIndexPath:), path);
         BHRDSharePost *candidate = BHRDSharePostFromSource(model);
         if (!candidate.identifier.length ||
             (![candidate.identifier isEqual:post.replyToIdentifier] && ![candidate.identifier isEqual:post.conversationIdentifier])) continue;

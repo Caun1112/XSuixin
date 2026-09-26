@@ -1,7 +1,8 @@
 #import "BHRDAdFilter.h"
+#import "BHRDModelAccess.h"
 static id Read(id object, NSString *key) {
     if (!object || object == NSNull.null) return nil;
-    @try { return [object valueForKey:key]; } @catch (__unused NSException *exception) { return nil; }
+    return BHRDModelValue(object, key);
 }
 static BOOL Marked(id object) {
     id promoted = Read(object, @"isPromoted");
@@ -11,6 +12,7 @@ static BOOL Marked(id object) {
            ([marker isKindOfClass:NSNumber.class] && [marker unsignedLongLongValue] > 0);
 }
 BOOL BHRDIsPromotedModel(id model) {
+    model = BHRDUnwrapModel(model);
     return Marked(model) || Marked(Read(model, @"status"));
 }
 NSArray *BHRDSectionsByRemovingAds(NSArray *sections) {

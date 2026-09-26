@@ -16,7 +16,7 @@ FOUNDATION_EXPORT void BHRDShowError(NSString *message);
 + (NSString *)getDownloadingPersent:(float)progress;
 + (void)showSaveVC:(NSURL *)url;
 + (void)save:(NSURL *)url;
-+ (UIAlertController *)newFFmpegDownloadSheet:(MediaInformation *)info downloadingURL:(NSURL *)url;
++ (UIAlertController *)newFFmpegDownloadSheet:(MediaInformation *)info downloadingURL:(NSURL *)url selection:(void (^)(NSNumber *index))selection;
 @end
 
 // Private interfaces used by the standalone features.

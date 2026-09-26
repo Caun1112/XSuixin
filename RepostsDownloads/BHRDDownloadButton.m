@@ -14,6 +14,7 @@
 #import "BHRDMediaResolver.h"
 #import "BHRDDownloadProgress.h"
 #import "BHRDStreamJob.h"
+#import "BHRDDownloadStore.h"
 #import "BHRDStrings.h"
 #import "../ffmpeg/MediaInformation.h"
 
@@ -252,10 +253,13 @@ BH_METRIC(shouldShowCount,            NO)
                         self.streamJob = [BHRDStreamJob probeURL:url completion:^(MediaInformation *info, NSError *error) {
                             self.streamJob = nil;
                             if (error) {
-                                if (error.code != NSURLErrorCancelled) BHRDShowError(@"无法读取流媒体清晰度，可能是网络中断或等待超时，请重试。");
+                                if (error.code != NSURLErrorCancelled) BHRDShowError([error.domain isEqual:@"BHRDBusy"] ? @"已有下载任务进行中，请等待完成或点击进度提示取消。" : @"无法读取流媒体清晰度，可能是网络中断或等待超时，请重试。");
                                 return;
                             }
-                            UIAlertController *ffmpegSheet = [BHRDManager newFFmpegDownloadSheet:info downloadingURL:url];
+                            UIAlertController *ffmpegSheet = [BHRDManager newFFmpegDownloadSheet:info downloadingURL:url selection:^(NSNumber *index) {
+                                if (self.downloadManager || self.streamJob || ![BHRDManager DownloadingVideos]) return;
+                                self.streamJob = [BHRDStreamJob downloadURL:url streamIndex:index completion:^{ self.streamJob = nil; }];
+                            }];
                             UIView *anchor = sourceView.window ? sourceView : BHTopMostController().view;
                             ffmpegSheet.popoverPresentationController.sourceView = anchor;
                             ffmpegSheet.popoverPresentationController.sourceRect = anchor.bounds;
@@ -295,7 +299,7 @@ BH_METRIC(shouldShowCount,            NO)
 }
 
 - (void)downloadDidFinish:(NSURL *)tmpURL Filename:(NSString *)name {
-    NSURL *dst = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:[NSString stringWithFormat:@"视频-%@.mp4", NSUUID.UUID.UUIDString]];
+    NSURL *dst = BHRDNewDownloadURL(NO);
     NSError *error = nil;
     if (![[NSFileManager defaultManager] moveItemAtURL:tmpURL toURL:dst error:&error]) {
         [self downloadDidFailureWithError:error];

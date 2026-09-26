@@ -196,7 +196,7 @@ int main(void) {
         later.noteTweet = @{@"text": @"缓存里的正文\n\n后来模型提供的更完整段落必须保留，不能被缓存提前返回挡住。"};
         Check([BHRDSharePostFromSource(later).body containsString:@"更完整段落"], @"A cache hit does not prevent richer native body data");
         CacheJSON(@{@"rest_id": @"rich", @"legacy": @{@"full_text": @"这是完整正文，包含后半段，不应该丢失。"}, @"core": @{@"user_results": @{@"result": @{@"core": @{@"name": @"新版作者", @"screen_name": @"modern_author"}, @"avatar": @{@"image_url": @"https://pbs.twimg.com/profile_images/new.png"}}}}});
-        CacheJSON(@{@"rest_id": @"rich", @"legacy": @{@"full_text": @"短摘要"}});
+        CacheJSON(@{@"rest_id": @"rich", @"legacy": @{@"full_text": @"短摘要", @"truncated": @YES}});
         result = BHRDSharePostFromSource(Post(@"rich", @"", nil, nil));
         Check([result.body containsString:@"后半段"] && [result.author isEqual:@"新版作者"], @"Partial later responses cannot erase full text or author data");
 

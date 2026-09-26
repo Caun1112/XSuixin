@@ -1,4 +1,5 @@
 #import "BHRDRepostModel.h"
+#import "BHRDModelAccess.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <string.h>
@@ -80,6 +81,7 @@ static BOOL Flag(id object, NSString *name) {
     return NO;
 }
 BOOL BHRDIsRepostModel(id model) {
+    model = BHRDUnwrapModel(model);
     // Inspect structural flags, never body text, quotedStatus or a nested quoted tweet.
     return Flag(model, @"isRetweet") || Flag(model, @"isRepost") ||
            Flag(Obj(model, @"status"), @"isRetweet") || Flag(Obj(model, @"status"), @"isRepost");
@@ -92,6 +94,7 @@ static NSString *Identifier(id object) {
 }
 static char BHRDModelIdentityKey;
 NSString *BHRDRepostIdentity(id model) {
+    model = BHRDUnwrapModel(model);
     if (!model) return nil;
     NSString *identifier = Identifier(model) ?: Identifier(Obj(model, @"status"));
     if (identifier) return identifier;
@@ -151,7 +154,10 @@ static void MergeInfo(BHRDRepostInfo *target, BHRDRepostInfo *additional) {
     if (target.postIdentifier && additional.postIdentifier && ![target.postIdentifier isEqual:additional.postIdentifier]) return;
     if (!target.postIdentifier) target.postIdentifier = additional.postIdentifier;
     // Never combine one account's name with a different account's avatar.
-    if (!target.authorIdentifier || !additional.authorIdentifier || [target.authorIdentifier isEqual:additional.authorIdentifier]) {
+    BOOL compatible = target.authorIdentifier.length && additional.authorIdentifier.length
+        ? [target.authorIdentifier isEqual:additional.authorIdentifier]
+        : (!target.authorHandle.length || !additional.authorHandle.length || [target.authorHandle caseInsensitiveCompare:additional.authorHandle] == NSOrderedSame);
+    if (compatible) {
         if (!target.authorIdentifier) target.authorIdentifier = additional.authorIdentifier;
         if (!target.authorName) target.authorName = additional.authorName;
         if (!target.authorHandle) target.authorHandle = additional.authorHandle;
@@ -317,6 +323,7 @@ static NSArray *MainSources(id object) {
     return sources;
 }
 BHRDRepostInfo *BHRDInfoForRepostModel(id model) {
+    model = BHRDUnwrapModel(model);
     NSArray *outerSources = MainSources(model), *sources = outerSources;
     BOOL explicitOriginal = NO;
     NSMutableSet *visited = [NSMutableSet set];

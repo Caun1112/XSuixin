@@ -8,6 +8,8 @@
 @property(nonatomic, copy) NSString *body;
 @property(nonatomic, copy) NSString *translatedBody;
 @property(nonatomic) BOOL bodyIsOriginal;
+@property(nonatomic) NSInteger bodyPriority; // 0 display text, 1 full text, 2 long-post text
+@property(nonatomic) BOOL bodyTruncated;
 @property(nonatomic, copy) NSDictionary<NSString *, NSData *> *imageData;
 @property(nonatomic, copy) NSString *link;
 @property(nonatomic, copy) NSString *quote;
@@ -31,6 +33,7 @@ NSDictionary *BHRDShareOptions(NSUserDefaults *defaults);
 
 void BHRDMergeSharePost(BHRDSharePost *target, BHRDSharePost *additional);
 NSArray<NSURL *> *BHRDShareImageURLs(BHRDSharePost *post);
+NSArray<NSURL *> *BHRDShareVisibleImageURLs(BHRDSharePost *post, NSDictionary *options);
 NSString *BHRDShareText(id value);
 void BHRDApplyShareTextRows(BHRDSharePost *post, NSArray<NSDictionary *> *rows);
 

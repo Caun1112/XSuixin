@@ -1,5 +1,6 @@
 #import "BHRDManager.h"
 #import <Photos/Photos.h>
+#import "BHRDDownloadStore.h"
 #import "BHRDStreamJob.h"
 #import <objc/message.h>
 #import "../ffmpeg/FFmpegKit.h"
@@ -59,7 +60,7 @@ void BHRDShowError(NSString *message) {
     sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(top.view.bounds), CGRectGetMidY(top.view.bounds), 1, 1);
     sheet.completionWithItemsHandler = ^(UIActivityType type, BOOL completed, NSArray *items, NSError *error) {
         // Keep the file when the user cancels or the receiving activity fails.
-        if (completed && !error) [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+        if (completed && !error) BHRDDiscardDownload(url);
     };
     [top presentViewController:sheet animated:YES completion:nil];
 }
@@ -79,26 +80,27 @@ void BHRDShowError(NSString *message) {
             [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:url];
         } completionHandler:^(BOOL success, NSError *error) {
             if (success) {
-                [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+                BHRDDiscardDownload(url);
                 BHRDShowError(@"已保存到相册。");
             } else {
                 NSLog(@"[BHRD] 相册保存失败：%@", error);
-                BHRDShowError(@"无法保存到相册，请检查相册权限和剩余存储空间。视频文件已保留。");
+                BHRDShowError(@"无法保存到相册，请检查相册权限和剩余存储空间。可在 X 随心设置的“已下载的文件”中重试。");
             }
         }];
     }];
 }
-+ (UIAlertController *)newFFmpegDownloadSheet:(MediaInformation *)info downloadingURL:(NSURL *)url {
++ (UIAlertController *)newFFmpegDownloadSheet:(MediaInformation *)info downloadingURL:(NSURL *)url selection:(void (^)(NSNumber *index))selection {
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"下载流媒体" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     NSMutableSet *seen = [NSMutableSet set];
     for (StreamInformation *stream in [info getStreams]) {
-        NSNumber *width = [stream getWidth], *height = [stream getHeight];
+        NSNumber *width = [stream getWidth], *height = [stream getHeight], *index = [stream getIndex];
+        if (!index || index.integerValue < 0 || ![[stream getType] isEqual:@"video"]) continue;
         if (width.integerValue <= 0 || height.integerValue <= 0) continue;
         NSString *resolution = [NSString stringWithFormat:@"%@x%@", width, height];
         if ([seen containsObject:resolution]) continue;
         [seen addObject:resolution];
         [sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"清晰度：%@ × %@", width, height] style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            [BHRDStreamJob downloadURL:url resolution:resolution];
+            if ([self DownloadingVideos] && selection) selection(index);
         }]];
     }
     if (seen.count == 0) sheet.message = @"无法读取流媒体清晰度，请选择普通视频下载或刷新后重试。";
@@ -106,3 +108,10 @@ void BHRDShowError(NSString *message) {
     return sheet;
 }
 @end
+
+__attribute__((constructor)) static void BHRDInstallDownloadMaintenance(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BHRDCleanSavedDownloads();
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { BHRDCleanSavedDownloads(); }];
+    });
+}

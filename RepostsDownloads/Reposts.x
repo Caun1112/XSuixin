@@ -10,10 +10,10 @@
 %hook NSJSONSerialization
 + (id)JSONObjectWithData:(NSData *)data options:(NSJSONReadingOptions)options error:(NSError **)error {
     id object = %orig;
-    if (object) BHRDCacheSharePosts(object, data);
+    if (object && BHRDPreference(BHRDShowShareImageKey)) BHRDCacheSharePosts(object, data);
     // Author/user responses can arrive separately from timeline entries. Keep
     // their metadata even when filtering is off, ready for preview mode later.
-    if (object && BHRDDataMayContainRepostMetadata(data)) {
+    if (object && [BHRDManager HideReposts] && BHRDCurrentRepostMode() == BHRDRepostModePreview && BHRDDataMayContainRepostMetadata(data)) {
         BHRDCacheRepostMetadata(object);
         BHRDRepostMetadataChanged();
     }

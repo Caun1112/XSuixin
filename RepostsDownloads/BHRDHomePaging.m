@@ -17,6 +17,7 @@ static char BindingKey, ScrollKey, TabKey, IndicatorKey, WindowStatesKey;
 @property(nonatomic, strong) NSMapTable<UIScrollView *, NSValue *> *sizes;
 @property(nonatomic, strong) NSMapTable<UIScrollView *, NSNumber *> *bounces;
 @property(nonatomic) BOOL active;
+@property(nonatomic) BOOL applyingPages;
 @end
 @implementation BHRDHomePageBinding @end
 static BOOL Active(BHRDHomePageBinding *binding) { return binding.active && BHRDPreference(BHRDHideHomeAddKey); }
@@ -39,6 +40,22 @@ static BOOL HookOnce(Class cls, SEL selector) {
     [installed addObject:key];
     return YES;
 }
+static BHRDHomeTabRole PageRole(id page) {
+    for (NSString *key in @[@"scribePage", @"identifier", @"title", @"accessibilityLabel"]) {
+        id value = Read(page, key);
+        if (![value isKindOfClass:NSString.class]) continue;
+        BHRDHomeTabRole role = BHRDHomeHeaderRole(value);
+        if (role == BHRDHomeTabForYou || role == BHRDHomeTabFollowing) return role;
+        if ([@[@"for_you", @"home_for_you"] containsObject:value]) return BHRDHomeTabForYou;
+        if ([@[@"following", @"home_latest"] containsObject:value]) return BHRDHomeTabFollowing;
+    }
+    return BHRDHomeTabNone;
+}
+static NSArray *PrimaryPages(NSArray *pages, BHRDHomePageBinding *binding) {
+    NSMutableArray *roles = [NSMutableArray array];
+    for (id page in pages) [roles addObject:@(page == binding.first ? BHRDHomeTabForYou : page == binding.second ? BHRDHomeTabFollowing : PageRole(page))];
+    return BHRDHomeSelectPrimaryPages(pages, roles);
+}
 static void HookArraySetter(id object, NSString *name) {
     SEL selector = NSSelectorFromString(Setter(name));
     NSMethodSignature *sig = [object methodSignatureForSelector:selector];
@@ -50,8 +67,11 @@ static void HookArraySetter(id object, NSString *name) {
         BHRDHomePageBinding *binding = objc_getAssociatedObject(target, &BindingKey);
         if (Active(binding) && [pages isKindOfClass:NSArray.class]) {
             NSMutableDictionary *saved = [binding.arrays objectForKey:target];
-            if (pages.count > 2) saved[name] = pages;
-            pages = BHRDHomeFirstTwoPages(pages);
+            if (!binding.applyingPages) saved[name] = pages;
+            NSArray *primary = PrimaryPages(pages, binding);
+            if (primary) pages = primary;
+            else { binding.active = NO; [binding.strip.window setNeedsLayout]; }
+
         }
         ((void (*)(id, SEL, id))original)(target, selector, pages);
     });
@@ -77,21 +97,28 @@ static void HookIndexSetter(id object, NSString *name) {
     }
 }
 static void BindPageArrays(id target, BHRDHomePageBinding *binding, BOOL pager) {
+    BOOL bound = NO;
     for (NSString *name in (pager ? @[@"viewControllers", @"pageViewControllers", @"pages", @"pageItems"] : @[@"tabViews", @"tabs", @"items"])) {
         NSArray *pages = Read(target, name);
         SEL setter = NSSelectorFromString(Setter(name));
-        if (![pages isKindOfClass:NSArray.class] || pages.count < 3 || pages.count > 20 || ![target respondsToSelector:setter]) continue;
+        if (![pages isKindOfClass:NSArray.class] || pages.count < 2 || pages.count > 20 || ![target respondsToSelector:setter]) continue;
         // Pager binding is limited to a home controller discovered from the actual
         // two header tabs. Strip arrays must contain the real first/second views.
-        if (!pager && (![pages containsObject:binding.first] || ![pages containsObject:binding.second])) continue;
+        NSArray *primary = PrimaryPages(pages, binding);
+        if (!primary) continue;
         NSMutableDictionary *saved = [binding.arrays objectForKey:target];
         if (!saved) { saved = [NSMutableDictionary dictionary]; [binding.arrays setObject:saved forKey:target]; }
-        saved[name] = pages;
+        if (!saved[name]) saved[name] = pages;
+        bound = YES;
         objc_setAssociatedObject(target, &BindingKey, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         HookArraySetter(target, name);
-        ((void (*)(id, SEL, id))objc_msgSend)(target, setter, BHRDHomeFirstTwoPages(pages));
+        if (![pages isEqual:primary]) {
+            binding.applyingPages = YES;
+            @try { ((void (*)(id, SEL, id))objc_msgSend)(target, setter, primary); }
+            @finally { binding.applyingPages = NO; }
+        }
     }
-    if (pager) {
+    if (pager && bound) {
         objc_setAssociatedObject(target, &BindingKey, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         for (NSString *name in @[@"selectedIndex", @"selectedPageIndex", @"currentPageIndex"]) HookIndexSetter(target, name);
     }
@@ -153,6 +180,8 @@ static void Restore(BHRDHomePageBinding *binding) {
         scroll.contentSize = [[binding.sizes objectForKey:scroll] CGSizeValue];
         scroll.bounces = [[binding.bounces objectForKey:scroll] boolValue];
     }
+    [binding.frames removeAllObjects]; [binding.hidden removeAllObjects]; [binding.arrays removeAllObjects];
+    [binding.sizes removeAllObjects]; [binding.bounces removeAllObjects];
 }
 void BHRDUpdateHomePaging(UIWindow *window, NSArray<NSDictionary *> *labels) {
     NSMapTable<UIView *, BHRDHomePageBinding *> *states = objc_getAssociatedObject(window, &WindowStatesKey);
@@ -167,7 +196,10 @@ void BHRDUpdateHomePaging(UIWindow *window, NSArray<NSDictionary *> *labels) {
         if (BHRDHomeHeaderRole(label[@"text"]) == BHRDHomeTabForYou) firstLabel = label[@"view"];
         if (BHRDHomeHeaderRole(label[@"text"]) == BHRDHomeTabFollowing) secondLabel = label[@"view"];
     }
-    if (!firstLabel || !secondLabel) return;
+    if (!firstLabel || !secondLabel) {
+        for (BHRDHomePageBinding *old in states.objectEnumerator) if (!old.strip.window || !old.active) Restore(old);
+        return;
+    }
     UIView *strip = firstLabel.superview;
     while (strip && ![secondLabel isDescendantOfView:strip]) strip = strip.superview;
     if (!strip || strip == window || strip.bounds.size.height > 110) return;
@@ -185,18 +217,35 @@ void BHRDUpdateHomePaging(UIWindow *window, NSArray<NSDictionary *> *labels) {
         binding.bounces = [NSMapTable weakToStrongObjectsMapTable];
         [states setObject:binding forKey:strip];
     }
+    if (binding.first != first || binding.second != second) { Restore(binding); binding.first = first; binding.second = second; }
+    UIViewController *home = nil;
+    for (UIResponder *r = strip.nextResponder; r; r = r.nextResponder) {
+        if ([r isKindOfClass:UIViewController.class]) {
+            NSString *name = NSStringFromClass(r.class);
+            if ([name containsString:@"HomeTimelineContainer"]) { home = (UIViewController *)r; break; }
+            if (!home && ([name containsString:@"HomeTimeline"] || [name containsString:@"PagingViewController"])) home = (UIViewController *)r;
+        }
+    }
+    if (!home) { Restore(binding); return; }
+    NSMutableArray *controllers = [NSMutableArray arrayWithObject:home];
+    BOOL verifiedPager = NO;
+    for (NSUInteger i=0; i<controllers.count && i<24; i++) {
+        UIViewController *controller = controllers[i];
+        for (NSString *key in @[@"viewControllers", @"pageViewControllers", @"pages", @"pageItems"]) {
+            id pages = Read(controller, key);
+            if ([pages isKindOfClass:NSArray.class] && PrimaryPages(pages, binding) && [controller respondsToSelector:NSSelectorFromString(Setter(key))]) verifiedPager = YES;
+        }
+        [controllers addObjectsFromArray:controller.childViewControllers];
+    }
+    if (!verifiedPager) { Restore(binding); [states removeObjectForKey:strip]; return; }
     binding.active = YES;
     for (UIView *tab in @[first, second]) {
         if (![binding.frames objectForKey:tab]) [binding.frames setObject:[NSValue valueWithCGRect:tab.frame] forKey:tab];
         objc_setAssociatedObject(tab, &TabKey, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         tab.frame = BHRDHomePagingTabFrame(tab, tab.frame);
     }
-    for (NSDictionary *label in labels) {
-        if (BHRDHomeHeaderRole(label[@"text"]) != BHRDHomeTabAdd) continue;
-        UIView *view = label[@"view"];
-        if (![view isDescendantOfView:strip]) continue;
-        UIView *tab = Branch(view, strip);
-        if (tab == first || tab == second) continue;
+    for (UIView *tab in strip.subviews) {
+        if (tab == first || tab == second || tab.bounds.size.height < 20) continue;
         if (![binding.hidden objectForKey:tab]) [binding.hidden setObject:@(tab.hidden) forKey:tab];
         tab.hidden = YES;
     }
@@ -211,22 +260,12 @@ void BHRDUpdateHomePaging(UIWindow *window, NSArray<NSDictionary *> *labels) {
         }
     }
     BindPageArrays(strip, binding, NO);
-    UIViewController *home = nil;
-    for (UIResponder *r = strip.nextResponder; r; r = r.nextResponder) {
-        if ([r isKindOfClass:UIViewController.class]) {
-            NSString *name = NSStringFromClass(r.class);
-            if ([name containsString:@"HomeTimelineContainer"]) { home = (UIViewController *)r; break; }
-            if (!home && ([name containsString:@"HomeTimeline"] || [name containsString:@"PagingViewController"])) home = (UIViewController *)r;
-        }
-    }
     // Structural association avoids touching profile/media/DM pagers elsewhere.
     if (!home) return;
-    NSMutableArray *controllers = [NSMutableArray arrayWithObject:home];
     for (NSUInteger index = 0; index < controllers.count && index < 24; index++) {
         UIViewController *controller = controllers[index];
         NSString *name = NSStringFromClass(controller.class);
         if ([name containsString:@"PagingViewController"] || [name containsString:@"HomeTimelineContainer"]) BindPageArrays(controller, binding, YES);
-        [controllers addObjectsFromArray:controller.childViewControllers];
     }
     NSMutableArray *pending = [NSMutableArray arrayWithObject:home.view];
     NSUInteger budget = 600;

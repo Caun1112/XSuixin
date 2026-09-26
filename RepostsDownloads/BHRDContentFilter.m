@@ -1,10 +1,11 @@
 #import "BHRDContentFilter.h"
+#import "BHRDModelAccess.h"
 #import "BHRDPreferences.h"
 static id Read(id object, NSString *key) {
-    @try { return [object valueForKey:key]; } @catch (__unused NSException *e) { return nil; }
+    return BHRDModelValue(object, key);
 }
 BOOL BHRDContentPolicy(NSString *name, NSString *banner, NSDictionary *scribe, NSString *location, NSSet *enabled) {
-    // Only semantic types/identifiers; never delete generic headers, messages or carousels.
+    // Explicit recommendation policy; broader Premium/carousel rules are documented in settings.
     if ([enabled containsObject:BHRDHideTopicsKey] && [banner isEqual:@"TFNTwitterURTTimelineStatusTopicBanner"]) return YES;
     if ([location isEqual:@"PROFILE_TWEETS"] && [enabled containsObject:BHRDHideWhoKey] && [name isEqual:@"T1URTTimelineUserItemViewModel"]) return YES;
     if ([enabled containsObject:BHRDHideSuggestedTopicsKey] && [@[@"T1TwitterSwift.URTTimelineTopicCollectionViewModel", @"TwitterURT.URTTimelineTopicCollectionViewModel"] containsObject:name ?: @""]) return YES;
@@ -16,11 +17,7 @@ BOOL BHRDContentPolicy(NSString *name, NSString *banner, NSDictionary *scribe, N
     return NO;
 }
 static id Unwrap(id model) {
-    Class wrapper = NSClassFromString(@"TFNDataViewItem");
-    for (NSUInteger i = 0; i < 4 && wrapper && [model isKindOfClass:wrapper]; i++) {
-        id next = Read(model, @"item"); if (!next || next == model) break; model = next;
-    }
-    return model;
+    return BHRDUnwrapModel(model);
 }
 static NSString *ModelClass(id model) { return NSStringFromClass([Unwrap(model) classForCoder]); }
 static BOOL Header(id model) { return [ModelClass(model) isEqual:@"TwitterURT.URTModuleHeaderViewModel"]; }
@@ -55,6 +52,9 @@ BOOL BHRDShouldHideRecommendation(id model, id controller) {
 }
 NSArray *BHRDFilterRecommendations(NSArray *sections, id controller) {
     if (![sections isKindOfClass:NSArray.class]) return sections;
+    BOOL enabled = NO;
+    for (NSString *key in @[BHRDHideTopicsKey,BHRDHideWhoKey,BHRDHideSuggestedTopicsKey,BHRDHidePremiumKey,BHRDHideTrendVideosKey]) enabled |= BHRDPreference(key);
+    if (!enabled) return sections;
     BOOL changed = NO; NSMutableArray *result = [NSMutableArray array];
     for (id section in sections) {
         if (![section isKindOfClass:NSArray.class]) { [result addObject:section]; continue; }

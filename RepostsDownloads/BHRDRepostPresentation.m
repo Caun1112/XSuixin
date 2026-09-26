@@ -45,10 +45,11 @@ static void ScheduleRefresh(id controller, BOOL forceReload) {
     __weak id weakController = controller;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         id current = weakController;
-        if (!current || BHRDIsConversationContext(current)) return;
+        if (!current) return;
         objc_setAssociatedObject(current, &BHRDReloadKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         BOOL force = [objc_getAssociatedObject(current, &BHRDForceReloadKey) boolValue];
         objc_setAssociatedObject(current, &BHRDForceReloadKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (BHRDIsConversationContext(current)) return;
         UITableView *table = Table(current);
         if (!table) return;
         // Never rewrite row counts inside a delegate callback or a host batch update.

@@ -6,9 +6,11 @@ X 随心（XSuixin）是面向 X/Twitter iOS 客户端的独立 Theos tweak，�
 
 ## 最新版本
 
-[下载 X 随心 2.2.2（标准 Rootless）](https://github.com/Caun1112/XSuixin/releases/tag/v2.2.2)
+[下载 X 随心 2.4.0（标准 Rootless）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.0)
 
-安装包：`XSuixin_2.2.2_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。发布页同时提供 SHA-256 校验文件。
+安装包：`XSuixin_2.4.0_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。发布页同时提供 SHA-256 校验文件。
+
+2.4.0 修复了 X 12.24.1 / iOS 17.1.1 图片全屏页的入口识别，增加可点击的图片工具箱，并将视频下载按钮贴近右侧安全区。
 
 ## 构建
 
@@ -26,6 +28,7 @@ sh ./RepostsDownloads/tests/run_downloads.sh
 sh ./RepostsDownloads/tests/run_quality_ads.sh
 sh ./RepostsDownloads/tests/run_recommendations.sh
 sh ./RepostsDownloads/tests/run_share.sh
+sh ./RepostsDownloads/tests/run_all.sh
 ```
 
 ## 归属

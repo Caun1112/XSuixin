@@ -5,3 +5,5 @@ BOOL BHRDHomeHeaderHasPrimaryTabs(NSArray<NSDictionary *> *labels, double y);
 NSArray *BHRDHomeFirstTwoPages(NSArray *pages);
 NSInteger BHRDHomeSelectedPage(NSInteger proposed);
 double BHRDHomeMaximumOffset(double viewportWidth, double contentWidth);
+
+NSArray *BHRDHomeSelectPrimaryPages(NSArray *pages, NSArray<NSNumber *> *roles);

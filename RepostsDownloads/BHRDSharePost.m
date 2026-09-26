@@ -14,6 +14,7 @@
     BHRDSharePost *copy = [BHRDSharePost new];
     copy.identifier = self.identifier; copy.title = self.title; copy.author = self.author; copy.authorIdentifier = self.authorIdentifier; copy.handle = self.handle;
     copy.authorIsRepresented = self.authorIsRepresented;
+    copy.bodyPriority = self.bodyPriority; copy.bodyTruncated = self.bodyTruncated;
     copy.body = self.body; copy.translatedBody = self.translatedBody; copy.bodyIsOriginal = self.bodyIsOriginal; copy.imageData = self.imageData; copy.link = self.link; copy.quote = self.quote; copy.avatar = self.avatar; copy.images = self.images; copy.avatarData = self.avatarData;
     copy.quotedPost = [self.quotedPost copy]; copy.quotedIdentifier = self.quotedIdentifier; copy.repostedBy = self.repostedBy;
     copy.replyToIdentifier = self.replyToIdentifier; copy.conversationIdentifier = self.conversationIdentifier; copy.replyContextPost = [self.replyContextPost copy];
@@ -147,8 +148,8 @@ void BHRDMergeSharePost(BHRDSharePost *target, BHRDSharePost *additional) {
         if (!target.avatarData || (incomingRepresented && additional.avatarData)) target.avatarData = additional.avatarData;
         target.authorIsRepresented |= additional.authorIsRepresented;
     }
-    if ((additional.bodyIsOriginal && !target.bodyIsOriginal) || (additional.bodyIsOriginal == target.bodyIsOriginal && additional.body.length > target.body.length)) {
-        if (additional.body.length) { target.body = additional.body; target.bodyIsOriginal = additional.bodyIsOriginal; }
+    if ((additional.bodyIsOriginal && !target.bodyIsOriginal) || (additional.bodyIsOriginal == target.bodyIsOriginal && (!target.body.length || additional.bodyPriority > target.bodyPriority || (target.bodyTruncated && !additional.bodyTruncated) || (!target.bodyIsOriginal && additional.body.length > target.body.length)))) {
+        if (additional.body.length) { target.body = additional.body; target.bodyIsOriginal = additional.bodyIsOriginal; target.bodyPriority = additional.bodyPriority; target.bodyTruncated = additional.bodyTruncated; }
     }
     if (additional.translatedBody.length > target.translatedBody.length) target.translatedBody = additional.translatedBody;
     NSMutableDictionary *local = [additional.imageData mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -214,7 +215,7 @@ static BHRDSharePost *ReadPost(id source, NSUInteger depth, NSMutableSet *visite
     } else BHRDMergeSharePost(post, rawAuthor);
     for (NSString *path in @[@"note_tweet.note_tweet_results.result.text", @"noteTweet.text", @"noteTweet.content.text", @"noteTweetResult.text", @"noteTweetResult.result.text", @"noteTweetModel.text", @"noteTweetViewModel.text", @"noteTweetContent", @"note_tweet_results.result.text", @"extended_tweet.full_text", @"legacy.full_text", @"full_text", @"fullText", @"fullAttributedText"]) {
         NSString *body = BHRDShareText(Path(source, path));
-        if (body.length > post.body.length) { post.body = body; post.bodyIsOriginal = YES; }
+        if (body.length) { post.body = body; post.bodyIsOriginal = YES; post.bodyPriority = [path.lowercaseString containsString:@"note"] ? 2 : 1; post.bodyTruncated = [Value(source, @"truncated") boolValue] || [Value(Value(source, @"legacy"), @"truncated") boolValue]; break; }
     }
     if (!post.body.length) for (NSString *path in @[@"textModel", @"attributedTextModel", @"attributedText", @"text", @"displayText"]) {
         NSString *body = BHRDShareText(Path(source, path)); if (body.length > post.body.length) post.body = body;
@@ -382,7 +383,7 @@ void BHRDApplyShareTextRows(BHRDSharePost *post, NSArray<NSDictionary *> *rows) 
         }
     }
     NSString *joined = [body componentsJoinedByString:@"\n\n"];
-    if (joined.length > post.body.length) post.body = joined;
+    if (!post.bodyIsOriginal && joined.length > post.body.length) post.body = joined;
     NSString *translated = [translation componentsJoinedByString:@"\n\n"];
     if (translated.length && ![translated isEqual:post.body] && translated.length > post.translatedBody.length) post.translatedBody = translated;
     if ([post.title isEqual:@"X 推文"] && post.handle.length) post.title = [NSString stringWithFormat:@"@%@ 的推文", post.handle];
@@ -400,4 +401,20 @@ BOOL BHRDShareHasDistinctTranslation(BHRDSharePost *post) {
     NSString *original = [post.body stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *translated = [post.translatedBody stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     return translated.length && ![original isEqual:translated];
+}
+
+NSArray<NSURL *> *BHRDShareVisibleImageURLs(BHRDSharePost *post, NSDictionary *options) {
+    NSMutableOrderedSet *urls = [NSMutableOrderedSet orderedSet];
+    NSMutableArray *posts = [NSMutableArray arrayWithObject:post];
+    if ([options[@"content"] boolValue]) {
+        if (post.replyContextPost) [posts addObject:post.replyContextPost];
+        BHRDSharePost *quoted=post.quotedPost;
+        for (NSUInteger depth=0; quoted && depth<2; depth++,quoted=quoted.quotedPost) [posts addObject:quoted];
+        if (post.replyContextPost.quotedPost) [posts addObject:post.replyContextPost.quotedPost];
+    }
+    for (BHRDSharePost *current in posts) {
+        if ([options[@"content"] boolValue]) [urls addObjectsFromArray:current.images ?: @[]];
+        if ([options[@"author"] boolValue] && current.avatar) [urls addObject:current.avatar];
+    }
+    return urls.array;
 }

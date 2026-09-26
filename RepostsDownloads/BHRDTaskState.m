@@ -36,3 +36,11 @@
     return YES;
 }
 @end
+
+static __weak id activeTransfer;
+BOOL BHRDTryBeginTransfer(id owner) {
+    @synchronized(BHRDTaskState.class) { if (activeTransfer && activeTransfer != owner) return NO; activeTransfer = owner; return YES; }
+}
+void BHRDEndTransfer(id owner) {
+    @synchronized(BHRDTaskState.class) { if (activeTransfer == owner) activeTransfer = nil; }
+}

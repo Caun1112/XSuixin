@@ -15,6 +15,11 @@
 }
 - (void)downloadFileWithURL:(NSURL *)url {
     if (!url || self.session || self.state.finished) return;
+    if (!BHRDTryBeginTransfer(self)) {
+        [self.state finish];
+        dispatch_async(dispatch_get_main_queue(), ^{ [self notifyFailure:[NSError errorWithDomain:@"BHRDBusy" code:1 userInfo:nil]]; });
+        return;
+    }
     NSURLSessionConfiguration *config = NSURLSessionConfiguration.defaultSessionConfiguration;
     config.timeoutIntervalForRequest = self.stallTimeout;
     config.timeoutIntervalForResource = 1800;
@@ -35,6 +40,7 @@
     [[self.session downloadTaskWithURL:url] resume];
 }
 - (void)notifyFailure:(NSError *)error {
+    BHRDEndTransfer(self);
     [self.watchdog invalidate]; self.watchdog = nil;
     id<BHRDDownloadDelegate> delegate = self.delegate;
     self.delegate = nil;
@@ -58,6 +64,7 @@
         [self notifyFailure:[NSError errorWithDomain:@"BHRDDownload" code:status userInfo:nil]];
         return;
     }
+    BHRDEndTransfer(self);
     id<BHRDDownloadDelegate> delegate = self.delegate;
     self.delegate = nil;
     [delegate downloadDidFinish:location Filename:response.suggestedFilename ?: @"视频.mp4"];

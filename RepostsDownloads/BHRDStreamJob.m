@@ -2,6 +2,8 @@
 #import "BHRDTaskState.h"
 #import "BHRDDownloadProgress.h"
 #import "BHRDManager.h"
+#import "BHRDStreamArguments.h"
+#import "BHRDDownloadStore.h"
 #import "../ffmpeg/FFmpegKit.h"
 #import "../ffmpeg/FFprobeKit.h"
 #import "../ffmpeg/MediaInformationSession.h"
@@ -13,6 +15,7 @@
 @property(nonatomic) NSTimeInterval lastProgress;
 @property(nonatomic) long lastSize;
 @property(nonatomic) double lastMediaTime;
+@property(nonatomic, copy) void (^downloadCompletion)(void);
 @property(nonatomic, copy) void (^probeCompletion)(MediaInformation *, NSError *);
 @end
 @implementation BHRDStreamJob
@@ -33,6 +36,7 @@
     [NSRunLoop.mainRunLoop addTimer:self.watchdog forMode:NSRunLoopCommonModes];
 }
 - (void)clearProgress {
+    BHRDEndTransfer(self);
     [self.watchdog invalidate]; self.watchdog = nil;
     BHRDDismissDownloadProgress(self.hud); self.hud = nil;
 }
@@ -41,6 +45,8 @@
     [self clearProgress];
     void (^completion)(MediaInformation *, NSError *) = self.probeCompletion;
     self.probeCompletion = nil;
+    void (^downloadDone)(void) = self.downloadCompletion; self.downloadCompletion = nil;
+    if (downloadDone) downloadDone();
     if (completion) completion(nil, error);
     else if (error.code != NSURLErrorCancelled) BHRDShowError(@"流媒体长时间没有进度，已停止下载。请检查网络后重试。");
 }
@@ -53,6 +59,10 @@
 + (instancetype)probeURL:(NSURL *)url completion:(void (^)(MediaInformation *, NSError *))completion {
     BHRDStreamJob *job = [BHRDStreamJob new];
     job.probeCompletion = completion;
+    if (!BHRDTryBeginTransfer(job)) {
+        dispatch_async(dispatch_get_main_queue(), ^{ job.probeCompletion = nil; completion(nil, [NSError errorWithDomain:@"BHRDBusy" code:1 userInfo:nil]); });
+        return job;
+    }
     [job beginProgress:@"正在读取清晰度…" timeout:45];
     MediaInformationSession *session = [FFprobeKit getMediaInformationAsync:url.absoluteString withCompleteCallback:^(MediaInformationSession *finished) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -67,22 +77,32 @@
     [job bindSessionID:[session getSessionId]];
     return job;
 }
-+ (void)downloadURL:(NSURL *)url resolution:(NSString *)resolution {
++ (instancetype)downloadURL:(NSURL *)url streamIndex:(NSNumber *)index completion:(void (^)(void))completion {
     BHRDStreamJob *job = [BHRDStreamJob new];
+    job.downloadCompletion = completion;
+    if (!BHRDTryBeginTransfer(job)) {
+        dispatch_async(dispatch_get_main_queue(), ^{ job.downloadCompletion = nil; if (completion) completion(); BHRDShowError(@"已有下载任务进行中，请等待完成或点击进度提示取消。"); });
+        return job;
+    }
     [job beginProgress:@"正在下载流媒体…" timeout:60];
-    NSURL *output = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:[NSString stringWithFormat:@"视频-%@.mp4", NSUUID.UUID.UUIDString]];
-    NSArray *args = @[@"-y", @"-rw_timeout", @"30000000", @"-i", url.absoluteString, @"-vf", [NSString stringWithFormat:@"scale=%@:flags=lanczos", resolution], @"-c:v", @"h264_videotoolbox", @"-b:v", @"2M", @"-c:a", @"aac", @"-movflags", @"+faststart", output.path];
+    NSURL *output = BHRDNewDownloadURL(YES);
+    NSArray *args = BHRDStreamArguments(url, index, output);
+    if (!args) { BHRDDiscardDownload(output); dispatch_async(dispatch_get_main_queue(), ^{ [job stopWithError:[NSError errorWithDomain:@"BHRDStream" code:1 userInfo:nil]]; }); return job; }
     FFmpegSession *session = [FFmpegKit executeWithArgumentsAsync:args withCompleteCallback:^(FFmpegSession *finished) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (![job.state finish]) {
-                [[NSFileManager defaultManager] removeItemAtURL:output error:nil];
+                BHRDDiscardDownload(output);
                 return;
             }
             [job clearProgress];
+            void (^done)(void) = job.downloadCompletion; job.downloadCompletion = nil;
+            if (done) done();
             if ([ReturnCode isSuccess:[finished getReturnCode]]) {
-                if ([BHRDManager DirectSave]) [BHRDManager save:output]; else [BHRDManager showSaveVC:output];
+                NSURL *ready = BHRDCompleteDownload(output);
+                if (!ready) { BHRDShowError(@"无法整理下载文件，请检查存储空间。"); return; }
+                if ([BHRDManager DirectSave]) [BHRDManager save:ready]; else [BHRDManager showSaveVC:ready];
             } else {
-                [[NSFileManager defaultManager] removeItemAtURL:output error:nil];
+                BHRDDiscardDownload(output);
                 BHRDShowError(@"流媒体下载失败，请检查网络或选择普通视频下载后重试。");
             }
         });
@@ -99,5 +119,6 @@
         });
     }];
     [job bindSessionID:[session getSessionId]];
+    return job;
 }
 @end

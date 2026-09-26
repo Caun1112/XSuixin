@@ -53,6 +53,10 @@ int main(int argc, const char *argv[]) {
 
         Recorder *cancelled = [Recorder new]; BHRDDownload *b = [BHRDDownload new]; b.delegate = cancelled;
         [b downloadFileWithURL:[NSURL URLWithString:[base stringByAppendingString:@"/slow"]]]; Pump(0.2);
+        Recorder *busy = [Recorder new]; BHRDDownload *duplicate = [BHRDDownload new]; duplicate.delegate = busy;
+        [duplicate downloadFileWithURL:[NSURL URLWithString:[base stringByAppendingString:@"/ok"]]]; Wait(busy);
+        Check(busy.failures == 1 && [busy.error.domain isEqual:@"BHRDBusy"], @"A second live HTTP transfer is rejected without replacing the first");
+        Check(cancelled.failures == 0 && cancelled.successes == 0, @"Rejecting another owner does not cancel the active transfer");
         [b cancel];
         Check(cancelled.failures == 1 && cancelled.error.code == NSURLErrorCancelled, @"Manual cancel notifies synchronously so the progress UI can close immediately");
         [b cancel];

@@ -2,6 +2,8 @@
 #import "BHRDDownloadButton.h"
 #import "BHRDSettingsViewController.h"
 #import "BHRDFullscreenDownloadControl.h"
+#import "BHRDFullscreenPhotoCopy.h"
+#import "BHRDFullscreenContext.h"
 #import "BHRDHomeHeaderView.h"
 #import "BHRDInlineLayout.h"
 #import "BHRDInlineButtonStyle.h"
@@ -22,8 +24,7 @@ static BOOL BHViewIsInImmersiveFullScreen(UIView *view) {
     for (NSUInteger depth = 0; responder != nil && depth < 64; depth++) {
         NSString *className = NSStringFromClass(responder.class);
         if ([responder isKindOfClass:UIViewController.class]) {
-            if ([className containsString:@"ImmersiveFullScreenViewController"] ||
-                [className containsString:@"ImmersiveViewController"]) {
+            if (BHRDIsFullscreenMediaController(responder)) {
                 return true;
             }
         }
@@ -81,10 +82,8 @@ static BHRDFullscreenVisibility *BHRDFloatingVisibility(UIViewController *contro
     }
     return state;
 }
-static BOOL BHRDIsFullscreenController(UIViewController *controller) {
-    NSString *name = NSStringFromClass(controller.class);
-    return [name containsString:@"ImmersiveFullScreenViewController"] || [name containsString:@"ImmersiveViewController"] || [name containsString:@"SlideshowViewController"];
-}
+static BOOL BHRDIsFullscreenController(UIViewController *controller) { return BHRDIsFullscreenMediaController(controller); }
+
 static id BHRDVideoModel(UIView *view) {
     return BHRDMediaObject(view, @"viewModel") ?: BHRDMediaObject(BHRDMediaObject(view, @"delegate"), @"viewModel");
 }
@@ -165,6 +164,7 @@ static NSArray *BHRDResolveFullscreenMedia(UIViewController *controller) {
     return media.count ? media : BHRDResolveMedia(root);
 }
 void BHRDRefreshFullscreenController(UIViewController *controller) {
+    if (BHRDRefreshFullscreenPhotoCopy(controller)) return;
     if (!BHRDIsFullscreenController(controller) && !objc_getAssociatedObject(controller, &BHRDFloatingSourceKey)) return;
     UIView *root = controller.viewIfLoaded;
     if (!root) return;
@@ -201,6 +201,7 @@ void BHRDFullscreenControllerDidAppear(UIViewController *controller) {
     BHRDRefreshFullscreenController(controller);
 }
 void BHRDFullscreenControllerDidDisappear(UIViewController *controller) {
+    BHRDRemoveFullscreenPhotoCopy(controller);
     if (!BHRDIsFullscreenController(controller) && !objc_getAssociatedObject(controller, &BHRDFloatingSourceKey)) return;
     [BHRDFloatingVisibility(controller) didDisappear];
     BHRDRemoveFloatingDownloadControl(controller);
@@ -221,6 +222,7 @@ static void BHRDRegisterFloatingSource(UIView *shareButton) {
     }
     owner = owner ?: fallback;
     if (!owner) return;
+    BHRDRegisterFullscreenMediaSource(owner,shareButton);
     BHRDFullscreenMediaSource *source = objc_getAssociatedObject(owner, &BHRDFloatingSourceKey);
     if (!source) {
         source = [BHRDFullscreenMediaSource new];
@@ -287,12 +289,12 @@ static void BHRemoveExtraFullscreenDownloadButtons(UIView *actionsView) {
 + (NSArray *)_t1_inlineActionViewClassesForViewModel:(id)arg1 options:(NSUInteger)arg2 displayType:(NSUInteger)arg3 account:(id)arg4 {
     NSArray *_orig = %orig;
     NSMutableArray *newOrig = [_orig mutableCopy] ?: [NSMutableArray array];
-    
+
     if ([BHRDManager isVideoCell:arg1] && [BHRDManager DownloadingVideos] && ![newOrig containsObject:BHRDDownloadButton.class]) {
         BHRDRememberMedia(arg1);
         [newOrig addObject:%c(BHRDDownloadButton)];
     }
-    
+
     return BHRDSetShareImageButtonClass(BHRDFilterInlineActionClasses([newOrig copy], BHRDHiddenInlineActionKeys()), BHRDShareImageButton.class, BHRDPreference(BHRDShowShareImageKey));
 }
 
@@ -309,12 +311,12 @@ static void BHRemoveExtraFullscreenDownloadButtons(UIView *actionsView) {
 + (NSArray *)_t1_inlineActionViewClassesForViewModel:(id)arg1 options:(NSUInteger)arg2 displayType:(NSUInteger)arg3 account:(id)arg4 {
     NSArray *_orig = %orig;
     NSMutableArray *newOrig = [_orig mutableCopy] ?: [NSMutableArray array];
-    
+
     if ([BHRDManager isVideoCell:arg1] && [BHRDManager DownloadingVideos] && ![newOrig containsObject:BHRDDownloadButton.class]) {
         BHRDRememberMedia(arg1);
         [newOrig addObject:%c(BHRDDownloadButton)];
     }
-    
+
     return BHRDSetShareImageButtonClass(BHRDFilterInlineActionClasses([newOrig copy], BHRDHiddenInlineActionKeys()), BHRDShareImageButton.class, BHRDPreference(BHRDShowShareImageKey));
 }
 

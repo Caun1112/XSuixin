@@ -7,3 +7,6 @@
 - (BOOL)finish;
 - (BOOL)cancel;
 @end
+
+BOOL BHRDTryBeginTransfer(id owner);
+void BHRDEndTransfer(id owner);

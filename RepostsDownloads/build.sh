@@ -7,4 +7,5 @@ if command -v gmake >/dev/null 2>&1; then
 else
     BHRD_MAKE=make
 fi
-exec "$BHRD_MAKE" clean package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1 "$@"
+"$BHRD_MAKE" clean
+exec "$BHRD_MAKE" package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1 "$@"

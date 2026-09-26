@@ -13,6 +13,7 @@ static inline NSString *BHRDLocalized(NSString *key) {
 
 // Do not expose locale-dependent English NSError descriptions in the plugin UI.
 static inline NSString *BHRDDownloadErrorMessage(NSError *error) {
+    if ([error.domain isEqualToString:@"BHRDBusy"]) return @"已有下载任务进行中，请等待完成或点击进度提示取消。";
     if ([error.domain isEqualToString:NSURLErrorDomain]) {
         switch (error.code) {
             case NSURLErrorTimedOut: return @"下载超时，请检查网络后重试。";

@@ -1,5 +1,6 @@
 #import "BHRDShareImageController.h"
 #import "BHRDShareRenderer.h"
+#import "BHRDShareRenderState.h"
 #import "BHRDManager.h"
 #import "BHRDShareMediaQuality.h"
 #import <Photos/Photos.h>
@@ -51,21 +52,22 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
 @property(nonatomic, strong) NSMutableArray<UIButton *> *toggles;
 @property(nonatomic, strong) NSMutableArray<UIButton *> *actions;
 @property(nonatomic, strong) NSData *png;
-@property(nonatomic) NSUInteger generation;
+@property(nonatomic, strong) BHRDShareRenderState *renderState;
+@property(nonatomic) NSUInteger imageGeneration;
 @property(nonatomic) NSUInteger pendingImages;
 @property(nonatomic) NSUInteger failedImages;
 @property(nonatomic) NSUInteger pendingUpgrades;
 @property(nonatomic) NSUInteger activeImageRequests;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *imageRequests;
-@property(nonatomic) BOOL qualityRenderScheduled;
 @property(nonatomic) BOOL closing;
-@property(nonatomic) BOOL rendering;
+
 @property(nonatomic) BOOL exporting;
 @property(nonatomic, strong) dispatch_queue_t renderQueue;
 @end
 @implementation BHRDShareImageController
 - (instancetype)initWithPost:(BHRDSharePost *)post {
     if ((self = [super init])) {
+        _renderState = [BHRDShareRenderState new];
         _post = [post copy]; _images = [BHRDShareEmbeddedImages(post) mutableCopy]; _tasks = [NSMutableArray array];
         BHRDRestoreShareAuthorOption(NSUserDefaults.standardUserDefaults);
         _options = [BHRDShareOptions(NSUserDefaults.standardUserDefaults) mutableCopy];
@@ -157,27 +159,28 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
         config.titleTextAttributesTransformer = ^NSDictionary *(NSDictionary *attrs) { NSMutableDictionary *a = [attrs mutableCopy]; a[NSFontAttributeName] = [UIFont systemFontOfSize:12 weight:selected ? UIFontWeightSemibold : UIFontWeightRegular]; return a; };
         self.toggles[i].configuration = config; self.toggles[i].accessibilityTraits = selected ? UIAccessibilityTraitButton | UIAccessibilityTraitSelected : UIAccessibilityTraitButton;
     }
-    BOOL enabled = self.png != nil && !self.rendering && !self.exporting && !self.pendingImages;
+    BOOL enabled = [self.renderState canExportPNG:self.png != nil pendingImages:self.pendingImages exporting:self.exporting];
     for (UIButton *button in self.actions) button.enabled = enabled;
-    self.hint.text = self.pendingImages ? @"正在补充尚未加载的媒体…" : self.rendering ? @"正在生成预览…" : self.pendingUpgrades ? @"高清图补充中，可先分享当前画质" : self.failedImages ? @"部分媒体未加载，可返回原推文加载后再试" : (self.post.replyToIdentifier.length && !self.post.replyContextPost) ? @"原帖尚未加载，请打开完整对话后再生成" : @"显示内容 · 双语显示原文与已有译文";
+    self.hint.text = self.pendingImages ? @"正在补充尚未加载的媒体…" : self.renderState.rendering ? @"正在生成预览…" : self.pendingUpgrades ? @"高清图补充中，可先分享当前画质" : self.failedImages ? @"部分媒体未加载，可返回原推文加载后再试" : (self.post.replyToIdentifier.length && !self.post.replyContextPost) ? @"原帖尚未加载，请打开完整对话后再生成" : @"显示内容 · 双语显示原文与已有译文";
 }
 - (void)themeChanged:(UIButton *)sender { self.theme = sender.tag; [NSUserDefaults.standardUserDefaults setInteger:self.theme forKey:@"bhrd_share_theme"]; [self updateControls]; [self render]; }
 - (void)optionChanged:(UIButton *)sender {
     NSString *key = BHRDShareOptionKeys()[sender.tag]; self.options[key] = @(![self.options[key] boolValue]);
     [NSUserDefaults.standardUserDefaults setBool:[self.options[key] boolValue] forKey:[@"bhrd_share_" stringByAppendingString:key]];
-    [self updateControls]; [self render];
+    [self loadImages];
 }
 - (void)render {
-    NSUInteger generation = ++self.generation; self.rendering = YES; [self updateControls];
+    NSUInteger generation = [self.renderState invalidate]; [self updateControls];
     BHRDSharePost *post = [self.post copy]; NSDictionary *options = [self.options copy], *images = [self.images copy]; NSInteger theme = self.theme;
     __weak BHRDShareImageController *weakSelf = self;
     dispatch_async(self.renderQueue, ^{
         @autoreleasepool {
+            if (![weakSelf.renderState isCurrent:generation]) return;
             NSError *error = nil; NSData *png = BHRDRenderSharePNG(post, theme, options, images, &error);
             dispatch_async(dispatch_get_main_queue(), ^{
                 BHRDShareImageController *controller = weakSelf;
-                if (!controller || controller.generation != generation) return;
-                controller.rendering = NO; controller.png = png;
+                if (!controller || controller.closing || ![controller.renderState accept:generation]) return;
+                controller.png = png;
                 controller.imageView.image = png ? [UIImage imageWithData:png] : nil;
                 [controller layoutImage]; [controller updateControls];
                 if (!png) controller.hint.text = error.localizedDescription ?: @"无法生成图片，请减少正文长度后重试。";
@@ -186,8 +189,11 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
     });
 }
 - (void)loadImages {
+    ++self.imageGeneration;
+    for (NSURLSessionTask *task in self.tasks) [task cancel];
+    [self.tasks removeAllObjects]; self.activeImageRequests = 0; self.pendingImages = 0; self.pendingUpgrades = 0; self.failedImages = 0;
     self.imageRequests = [NSMutableArray array];
-    for (NSURL *url in BHRDShareImageURLs(self.post)) {
+    for (NSURL *url in BHRDShareVisibleImageURLs(self.post, self.options)) {
         if (![url.scheme hasPrefix:@"http"]) continue;
         NSData *current = self.images[url.absoluteString];
         if (!current) {
@@ -207,13 +213,14 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
     [self render]; [self startNextImageRequests];
 }
 - (void)scheduleQualityRender {
-    if (self.qualityRenderScheduled || self.closing) return;
-    self.qualityRenderScheduled = YES;
+    if (self.closing) return;
+    BOOL schedule = [self.renderState scheduleImageRender]; [self updateControls];
+    if (!schedule) return;
     __weak BHRDShareImageController *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         BHRDShareImageController *controller = weakSelf;
         if (!controller || controller.closing) return;
-        controller.qualityRenderScheduled = NO; [controller render];
+        [controller.renderState clearImageRenderSchedule]; [controller render];
     });
 }
 - (void)startNextImageRequests {
@@ -221,6 +228,7 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
     while (self.activeImageRequests < 2 && self.imageRequests.count) {
         NSDictionary *item = self.imageRequests.firstObject; [self.imageRequests removeObjectAtIndex:0];
         self.activeImageRequests++;
+        NSUInteger imageGeneration = self.imageGeneration;
         NSURL *url = item[@"url"]; NSString *key = item[@"key"]; BOOL required = [item[@"required"] boolValue];
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url]; request.timeoutInterval = 12;
         __weak BHRDShareImageController *weakSelf = self;
@@ -229,7 +237,7 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
             if (valid) BHRDCacheQualityImage(url, data);
             dispatch_async(dispatch_get_main_queue(), ^{
                 BHRDShareImageController *controller = weakSelf;
-                if (!controller || controller.closing) return;
+                if (!controller || controller.closing || controller.imageGeneration != imageGeneration) return;
                 controller.activeImageRequests--;
                 if (required) controller.pendingImages--; else controller.pendingUpgrades--;
                 if (valid && BHRDShareImageIsBetter(data, controller.images[key])) {
@@ -247,10 +255,14 @@ static UIColor *RGB(NSNumber *value) { NSUInteger n = value.unsignedIntegerValue
     editor.done = ^(BHRDSharePost *post) { weakSelf.post = post; [weakSelf render]; };
     [self.navigationController pushViewController:editor animated:YES];
 }
-- (void)close { self.closing = YES; [self.imageRequests removeAllObjects]; for (NSURLSessionTask *task in self.tasks) [task cancel]; [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)close { self.closing = YES; [self.renderState invalidate]; [self.imageRequests removeAllObjects]; for (NSURLSessionTask *task in self.tasks) [task cancel]; [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    if (self.isBeingDismissed || self.navigationController.isBeingDismissed) { self.closing = YES; [self.renderState invalidate]; for (NSURLSessionTask *task in self.tasks) [task cancel]; }
+}
 - (void)dealloc { for (NSURLSessionTask *task in _tasks) [task cancel]; }
 - (void)export:(UIButton *)sender {
-    if (!self.png || self.rendering || self.exporting || self.pendingImages) return;
+    if (![self.renderState canExportPNG:self.png != nil pendingImages:self.pendingImages exporting:self.exporting]) return;
     NSData *png = self.png;
     if (sender.tag == 2) { [UIPasteboard.generalPasteboard setData:png forPasteboardType:@"public.png"]; return; }
     if (sender.tag == 0) {
