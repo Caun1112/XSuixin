@@ -27,7 +27,7 @@ jobs:
         with:
           path: source
       - name: Install tools
-        run: brew install make dpkg ldid ffmpeg
+        run: brew install make dpkg ldid ffmpeg python
       - name: Add GNU Make
         run: echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v4
