@@ -4,7 +4,13 @@ X 随心（XSuixin）是面向 X/Twitter iOS 客户端的独立 Theos tweak，�
 
 本仓库从 [BHTwitter](https://github.com/BandarHL/BHTwitter) 工作区提取 X 随心相关代码，并保留其独立构建所需的 JGProgressHUD、FFmpegKit 头文件和静态库。插件源码位于 [`RepostsDownloads/`](RepostsDownloads/)，详细版本记录、功能开关和测试说明见 [`RepostsDownloads/README.md`](RepostsDownloads/README.md)。
 
-## 最新版本
+## 当前源码与头像诊断
+
+当前源码已同步到 2.4.2，包含 2.4.1 的原作者身份保护及 2.4.2 的头像资料补全。针对手机上仍显示占位头像的问题，新增 `2.4.2+diag.1` 文件诊断构建，用于查明实际缺失的字段或下载失败原因，尚不代表真机问题已解决。
+
+诊断包构建命令：`sh RepostsDownloads/build-avatar-diagnostics.sh`。GitHub Actions 的 `XSuixin-avatar-diagnostics` 产物提供诊断 DEB 与 SHA-256；日志路径和复现步骤见[头像诊断说明](RepostsDownloads/AVATAR-DIAGNOSTICS.md)。
+
+## 已发布 Release
 
 [下载 X 随心 2.4.0（标准 Rootless）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.0)
 
