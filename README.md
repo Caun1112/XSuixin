@@ -6,7 +6,9 @@ X 随心（XSuixin）是面向 X/Twitter iOS 客户端的独立 Theos tweak，�
 
 ## 当前源码与头像诊断
 
-当前源码已同步到 2.4.2，包含 2.4.1 的原作者身份保护及 2.4.2 的头像资料补全。针对手机上仍显示占位头像的问题，新增 `2.4.2+diag.1` 文件诊断构建，用于查明实际缺失的字段或下载失败原因，尚不代表真机问题已解决。
+当前源码为 2.4.3。根据真机日志，新增头像 URL 缺失时的原生图片回退：核对 `TUIAvatarImageView` 绑定的原作者账号和图片到达时序，接收稍后加载的 UIImage / 图层图片。保留身份冲突与单元格复用保护，并补充头像媒体实体读取。完整说明见 [2.4.3 发布记录](RepostsDownloads/RELEASE-2.4.3.md)。
+
+同时提供含相同修复的 `2.4.3+diag.1` 文件诊断构建，便于真机复验；本地模拟测试不代表手机显示效果已经确认。
 
 诊断包构建命令：`sh RepostsDownloads/build-avatar-diagnostics.sh`。GitHub Actions 的 `XSuixin-avatar-diagnostics` 产物提供诊断 DEB 与 SHA-256；日志路径和复现步骤见[头像诊断说明](RepostsDownloads/AVATAR-DIAGNOSTICS.md)。
 
