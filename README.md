@@ -6,7 +6,7 @@ X 随心（XSuixin）是面向 X/Twitter iOS 客户端的独立 Theos tweak，�
 
 ## 当前版本与诊断日志
 
-当前源码为 2.4.5。补齐 SSP 广告开关读取入口，拦截 Google 原生广告加载，并识别无推广元数据的原生广告模型。保留全屏图片纯图标复制和原作者头像修复。依据和验证边界见 [2.4.5 发布记录](RepostsDownloads/RELEASE-2.4.5.md)。
+当前已按用户要求恢复 2.4.4 的功能行为，移除 2.4.5 的 SSP/Google 加载拦截，保留默认日志查看和导出。图片纯图标复制、原作者头像修复及下载功能保持原 2.4.4 行为。说明见 [2.4.4 统一日志重建](RepostsDownloads/RELEASE-2.4.4-r1.md)。
 
 以后只提供一个 rootless DEB，默认内置本机日志。“X 随心 → 文件与诊断 → 诊断日志”支持查看、刷新和导出，无需另装诊断版。不会自动上传日志。本地模拟测试不代表已完成真机广告验收。
 
@@ -14,9 +14,9 @@ GitHub Actions 只输出 `XSuixin-rootless` 一份产物。构建命令为 `sh R
 
 ## 已发布 Release
 
-[下载 X 随心 2.4.5（Rootless，内置日志）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.5)
+[下载 X 随心 2.4.4（Rootless，内置日志）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.4-r1)
 
-安装包：`XSuixin_2.4.5_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。发布页同时提供 SHA-256 校验文件。
+安装包：`XSuixin_2.4.4_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。只提供这一个统一包和 SHA-256 校验文件。已安装 2.4.5 需降级；已安装旧 2.4.4 需重新安装本包。GitHub 的 r1 仅为源码/发布修订标记，包内版本仍为 2.4.4。
 
 安装后彻底退出并重开 X，再进入全屏图片和上下滑动的视频流验证。
 
