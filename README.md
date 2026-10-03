@@ -6,7 +6,7 @@ X 随心（XSuixin）是面向 X/Twitter iOS 客户端的独立 Theos tweak，�
 
 ## 当前版本与诊断日志
 
-当前版本为 2.4.6。在全屏图片右侧悬浮三个点的工具箱中新增“保存图片到照片”，支持添加照片权限、原图获取及当前位图备用保存，保留隐藏转推整行打开详情与返回隐藏状态。说明见 [2.4.6 发布记录](RepostsDownloads/RELEASE-2.4.6.md)。
+当前完整构建为 2.4.7-1。新增运行状态和暂停恢复入口、日志清空/脱敏与临时详细采集、原图失败确认/重复保存提示、复制隐私和重要下载保留策略。说明见 [2.4.7-1 发布记录](RepostsDownloads/RELEASE-2.4.7-1.md)。真机待验项目见 [设备清单](RepostsDownloads/DEVICE-ACCEPTANCE.md)。
 
 以后只提供一个 rootless DEB，默认内置本机日志。“X 随心 → 文件与诊断 → 诊断日志”支持查看、刷新和导出，无需另装诊断版。不会自动上传日志。本地模拟测试不代表已完成真机广告验收。
 
@@ -14,9 +14,9 @@ GitHub Actions 只输出 `XSuixin-rootless` 一份产物。构建命令为 `sh R
 
 ## 已发布 Release
 
-[下载 X 随心 2.4.6（Rootless，内置日志）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.6)
+[下载 X 随心 2.4.7-1（Rootless，内置日志）](https://github.com/Caun1112/XSuixin/releases/tag/v2.4.7-1)
 
-安装包：`XSuixin_2.4.6_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。只提供这一个默认带日志的包和 SHA-256 校验文件。可从 2.4.4 / 2.4.5 升级。
+安装包：`XSuixin_2.4.7-1_rootless.deb`（iOS 15.0+、arm64、标准 rootless 越狱环境）。只提供一个默认带日志的包和 SHA-256 校验文件，可从 2.4.6 升级。每次不同源码递增 Debian 修订，设置与日志显示准确提交，正式包从干净提交生成，见 [构建政策](RepostsDownloads/BUILD-POLICY.md)。
 
 安装后彻底退出并重开 X，再进入全屏图片和上下滑动的视频流验证。
 
