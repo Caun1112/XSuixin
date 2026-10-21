@@ -7,4 +7,4 @@
 @"photo_copy_payload",@"photo_save_authorization",@"photo_save_committed",@"photo_save_fetch",@"photo_save_prepare",@"photo_save_result",
 @"photo_save_start",@"preview_resolved",@"recovery_invoked",@"safety_pause_changed",@"session_start",@"stream_download_bound",
 @"stream_download_callback",@"stream_download_progress",@"stream_download_result",@"stream_download_start",@"stream_job_cancel",@"stream_job_timeout",
-@"stream_probe_bound",@"stream_probe_callback",@"stream_probe_result",@"stream_probe_start",@"stream_probe_wait",
+@"stream_probe_bound",@"stream_probe_callback",@"stream_probe_invalidated",@"stream_probe_result",@"stream_probe_start",@"stream_probe_wait",
